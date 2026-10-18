@@ -10,6 +10,7 @@ import 'package:roadsense_logger/domain/models/gps_fix.dart';
 import 'package:roadsense_logger/domain/models/imu_event.dart';
 import 'package:roadsense_logger/domain/models/sensor_info.dart';
 import 'package:roadsense_logger/services/location/location_source.dart';
+import 'package:roadsense_logger/services/native/native_control.dart';
 import 'package:roadsense_logger/services/sensors/sensor_source.dart';
 
 /// One decoded native IMU batch.
@@ -44,7 +45,7 @@ class NativeGpsEvent {
   final String? reason;
 }
 
-class NativeBridge implements SensorSource, LocationSource {
+class NativeBridge implements SensorSource, LocationSource, NativeControl {
   NativeBridge({
     MethodChannel? methodChannel,
     EventChannel? eventChannel,
@@ -163,6 +164,7 @@ class NativeBridge implements SensorSource, LocationSource {
   }
 
   /// Samples the elapsed ↔ wall-clock mapping (FR-041).
+  @override
   Future<ClockMapping> getClockMapping() async {
     final map = (await _method.invokeMapMethod<String, Object?>(
       'getClockMapping',
@@ -174,14 +176,34 @@ class NativeBridge implements SensorSource, LocationSource {
   }
 
   /// Current monotonic elapsed-realtime nanoseconds.
+  @override
   Future<int> getElapsedNs() async =>
       (await _method.invokeMethod<int>('getElapsedNs'))!;
 
+  @override
+  Future<DeviceInfo> getDeviceInfo() async {
+    final map = (await _method.invokeMapMethod<String, Object?>(
+      'getDeviceInfo',
+    ))!;
+    return DeviceInfo(
+      manufacturer: map['manufacturer'] as String? ?? '',
+      model: map['model'] as String? ?? '',
+      androidVersion: map['android_version'] as String? ?? '',
+    );
+  }
+
+  @override
+  Future<int> getFreeStorageBytes() async =>
+      (await _method.invokeMethod<int>('getFreeStorageBytes'))!;
+
+  @override
   Future<void> startForeground({required bool audio}) =>
       _method.invokeMethod<void>('startForeground', {'audio': audio});
 
+  @override
   Future<void> stopForeground() => _method.invokeMethod<void>('stopForeground');
 
+  @override
   Future<Map<String, bool>> checkPermissions(List<String> permissions) async {
     final map = (await _method.invokeMapMethod<String, Object?>(
       'checkPermissions',
@@ -190,6 +212,7 @@ class NativeBridge implements SensorSource, LocationSource {
     return map.map((key, value) => MapEntry(key, value as bool));
   }
 
+  @override
   Future<Map<String, bool>> requestPermissions(List<String> permissions) async {
     final map = (await _method.invokeMapMethod<String, Object?>(
       'requestPermissions',

@@ -82,6 +82,14 @@ class MainActivity : FlutterActivity() {
                     ),
                 )
                 "getElapsedNs" -> result.success(SensorCollector.elapsedRealtimeNs())
+                "getDeviceInfo" -> result.success(
+                    mapOf(
+                        "manufacturer" to Build.MANUFACTURER,
+                        "model" to Build.MODEL,
+                        "android_version" to Build.VERSION.RELEASE,
+                    ),
+                )
+                "getFreeStorageBytes" -> result.success(freeStorageBytes())
                 "startGps" -> startGps(
                     call.argument<Int>("intervalMs") ?: 1000,
                     result,
@@ -112,6 +120,9 @@ class MainActivity : FlutterActivity() {
             }
         }
     }
+
+    private fun freeStorageBytes(): Long =
+        android.os.StatFs(filesDir.absolutePath).availableBytes
 
     private fun startGps(intervalMs: Int, result: MethodChannel.Result) {
         if (checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) !=
