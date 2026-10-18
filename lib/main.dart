@@ -37,7 +37,5 @@ Future<void> main() async {
     container.read(loggerProvider).error('Session recovery failed', error);
   }
 
-  runApp(
-    ProviderScope(overrides: overrides, child: const RoadSenseApp()),
-  );
+  runApp(ProviderScope(overrides: overrides, child: const RoadSenseApp()));
 }

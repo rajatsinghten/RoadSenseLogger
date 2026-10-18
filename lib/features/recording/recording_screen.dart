@@ -18,6 +18,7 @@ class RecordingScreen extends StatefulWidget {
     required this.controller,
     this.settings = const SessionSettings(),
     this.onOpenSettings,
+    this.onOpenHistory,
     this.loadLastConfig,
     this.saveLastConfig,
   });
@@ -29,6 +30,9 @@ class RecordingScreen extends StatefulWidget {
 
   /// Opens the settings screen (wired by the app shell).
   final VoidCallback? onOpenSettings;
+
+  /// Opens the session history (wired by the app shell).
+  final VoidCallback? onOpenHistory;
 
   /// Remembers pre-recording dialog selections (FR-073).
   final Future<SessionConfig?> Function()? loadLastConfig;
@@ -119,6 +123,12 @@ class _RecordingScreenState extends State<RecordingScreen> {
           appBar: AppBar(
             title: const Text('RoadSense Logger'),
             actions: [
+              if (widget.onOpenHistory != null)
+                IconButton(
+                  icon: const Icon(Icons.history),
+                  tooltip: 'Sessions',
+                  onPressed: widget.onOpenHistory,
+                ),
               if (widget.onOpenSettings != null)
                 IconButton(
                   icon: const Icon(Icons.settings),

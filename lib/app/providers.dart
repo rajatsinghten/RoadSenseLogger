@@ -75,7 +75,7 @@ final exportCacheDirProvider = Provider<Directory>(
   (ref) => Directory('${ref.watch(sessionRootDirProvider).path}/.export_cache'),
 );
 
-final exportManagerProvider = Provider<ExportManager>(
+final exportManagerProvider = Provider<SessionExporter>(
   (ref) => ExportManager(
     cacheDir: ref.watch(exportCacheDirProvider),
     native: ref.watch(nativeControlProvider),

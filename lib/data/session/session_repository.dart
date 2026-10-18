@@ -36,6 +36,47 @@ class SessionRecord {
 
   int? get gpsFixCount => _qualityInt('gps_fix_count');
 
+  double? get gpsDistanceM => _num('gps', 'distance_m');
+
+  double? get gpsAvgSpeedMps => _num('gps', 'avg_speed_mps');
+
+  double? get accAchievedRateHz => _num('imu', 'acc', 'achieved_rate_hz');
+
+  double? get gyroAchievedRateHz => _num('imu', 'gyro', 'achieved_rate_hz');
+
+  int? get videoRequestedWidth => _num('video', 'requested_width')?.toInt();
+
+  int? get videoRequestedHeight => _num('video', 'requested_height')?.toInt();
+
+  int? get videoRequestedFps => _num('video', 'requested_fps')?.toInt();
+
+  String? get videoResolutionPreset =>
+      (_nested('video')?['resolution_preset'] as String?);
+
+  Map<String, Object?> get quality =>
+      (metadata?['quality'] as Map<String, Object?>?) ?? const {};
+
+  bool get interrupted =>
+      (_nested('interruption')?['interrupted'] as bool?) ?? false;
+
+  String? get interruptionReason =>
+      _nested('interruption')?['reason'] as String?;
+
+  bool get recovered => (_nested('recovery')?['recovered'] as bool?) ?? false;
+
+  Map<String, Object?>? _nested(String key) =>
+      metadata?[key] as Map<String, Object?>?;
+
+  double? _num(String key, String field, [String? sub]) {
+    final level = _nested(key);
+    if (level == null) return null;
+    final value = sub == null
+        ? level[field]
+        : (level[field] as Map<String, Object?>?);
+    if (sub == null) return (value as num?)?.toDouble();
+    return ((value as Map<String, Object?>?)?[sub] as num?)?.toDouble();
+  }
+
   int? _qualityInt(String key) {
     final quality = metadata?['quality'] as Map<String, Object?>?;
     return (quality?[key] as num?)?.toInt();

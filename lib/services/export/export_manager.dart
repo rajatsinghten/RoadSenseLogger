@@ -14,17 +14,30 @@ import 'package:roadsense_logger/data/session/session_repository.dart';
 import 'package:roadsense_logger/services/native/native_control.dart';
 import 'package:share_plus/share_plus.dart';
 
-class ExportManager {
+/// UI-facing export seam (implemented by [ExportManager]).
+abstract interface class SessionExporter {
+  Future<File> createFullArchive(SessionRecord record);
+
+  Future<File> createCsvArchive(SessionRecord record);
+
+  Future<void> shareArchive(File archive, {String? subject});
+
+  Future<void> openSessionFolder(SessionRecord record);
+}
+
+class ExportManager implements SessionExporter {
   ExportManager({required this.cacheDir, required this.native});
 
   final Directory cacheDir;
   final NativeControl native;
 
   /// Builds the full session archive (video + CSVs + metadata).
+  @override
   Future<File> createFullArchive(SessionRecord record) =>
       _buildArchive(record, includeVideo: true);
 
   /// Builds a CSV-only archive (dataset CSVs + metadata, no video).
+  @override
   Future<File> createCsvArchive(SessionRecord record) =>
       _buildArchive(record, includeVideo: false);
 
@@ -76,6 +89,7 @@ class ExportManager {
   }
 
   /// Shares an archive via the Android share sheet (content URI).
+  @override
   Future<void> shareArchive(File archive, {String? subject}) async {
     try {
       await SharePlus.instance.share(
@@ -87,6 +101,7 @@ class ExportManager {
   }
 
   /// Opens the session directory with a system file viewer where supported.
+  @override
   Future<void> openSessionFolder(SessionRecord record) async {
     try {
       await native.openFolder(record.directory.path);
