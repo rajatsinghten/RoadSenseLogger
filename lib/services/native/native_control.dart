@@ -32,6 +32,9 @@ abstract interface class NativeControl {
   /// Free bytes available to the app on the data volume (FR-054).
   Future<int> getFreeStorageBytes();
 
+  /// Opens a directory with a system file viewer where supported (FR-070).
+  Future<void> openFolder(String path);
+
   Future<Map<String, bool>> checkPermissions(List<String> permissions);
 
   Future<Map<String, bool>> requestPermissions(List<String> permissions);

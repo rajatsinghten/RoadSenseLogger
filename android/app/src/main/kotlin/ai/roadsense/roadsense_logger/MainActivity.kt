@@ -90,6 +90,7 @@ class MainActivity : FlutterActivity() {
                     ),
                 )
                 "getFreeStorageBytes" -> result.success(freeStorageBytes())
+                "openFolder" -> openFolder(call.argument<String>("path"), result)
                 "startGps" -> startGps(
                     call.argument<Int>("intervalMs") ?: 1000,
                     result,
@@ -123,6 +124,31 @@ class MainActivity : FlutterActivity() {
 
     private fun freeStorageBytes(): Long =
         android.os.StatFs(filesDir.absolutePath).availableBytes
+
+    private fun openFolder(path: String?, result: MethodChannel.Result) {
+        if (path == null) {
+            result.error("OPEN_FOLDER_FAILED", "No path given", null)
+            return
+        }
+        try {
+            val uri = androidx.core.content.FileProvider.getUriForFile(
+                this,
+                "$packageName.fileprovider",
+                java.io.File(path),
+            )
+            val intent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
+                setDataAndType(uri, "vnd.android.document/directory")
+                addFlags(
+                    android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                        android.content.Intent.FLAG_ACTIVITY_NEW_TASK,
+                )
+            }
+            startActivity(intent)
+            result.success(null)
+        } catch (error: Exception) {
+            result.error("OPEN_FOLDER_FAILED", error.message, null)
+        }
+    }
 
     private fun startGps(intervalMs: Int, result: MethodChannel.Result) {
         if (checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) !=

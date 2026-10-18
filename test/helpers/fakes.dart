@@ -174,6 +174,15 @@ class FakeNativeControl implements NativeControl {
     androidVersion: '15',
   );
 
+  int openFolderCount = 0;
+  String? lastOpenedFolder;
+
+  @override
+  Future<void> openFolder(String path) async {
+    openFolderCount++;
+    lastOpenedFolder = path;
+  }
+
   @override
   Future<int> getFreeStorageBytes() async => freeStorageBytes;
 

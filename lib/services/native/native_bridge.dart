@@ -197,6 +197,10 @@ class NativeBridge implements SensorSource, LocationSource, NativeControl {
       (await _method.invokeMethod<int>('getFreeStorageBytes'))!;
 
   @override
+  Future<void> openFolder(String path) =>
+      _method.invokeMethod<void>('openFolder', {'path': path});
+
+  @override
   Future<void> startForeground({required bool audio}) =>
       _method.invokeMethod<void>('startForeground', {'audio': audio});
 
