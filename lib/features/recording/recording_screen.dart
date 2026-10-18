@@ -17,12 +17,22 @@ class RecordingScreen extends StatefulWidget {
     super.key,
     required this.controller,
     this.settings = const SessionSettings(),
+    this.onOpenSettings,
+    this.loadLastConfig,
+    this.saveLastConfig,
   });
 
   final RecordingController controller;
 
   /// Settings used to prepare the pre-recording camera preview.
   final SessionSettings settings;
+
+  /// Opens the settings screen (wired by the app shell).
+  final VoidCallback? onOpenSettings;
+
+  /// Remembers pre-recording dialog selections (FR-073).
+  final Future<SessionConfig?> Function()? loadLastConfig;
+  final Future<void> Function(SessionConfig config)? saveLastConfig;
 
   @override
   State<RecordingScreen> createState() => _RecordingScreenState();
@@ -56,12 +66,15 @@ class _RecordingScreenState extends State<RecordingScreen> {
   }
 
   Future<void> _startRecording() async {
-    final config = await showPreRecordDialog(context, initial: _lastConfig);
+    final initial = _lastConfig ?? await widget.loadLastConfig?.call();
+    if (!mounted) return;
+    final config = await showPreRecordDialog(context, initial: initial);
     if (config == null || !mounted) return;
     setState(() => _busy = true);
     try {
       await widget.controller.start(config);
       _lastConfig = config;
+      await widget.saveLastConfig?.call(config);
     } on AppFailure catch (error) {
       if (mounted) {
         ScaffoldMessenger.of(
@@ -106,6 +119,12 @@ class _RecordingScreenState extends State<RecordingScreen> {
           appBar: AppBar(
             title: const Text('RoadSense Logger'),
             actions: [
+              if (widget.onOpenSettings != null)
+                IconButton(
+                  icon: const Icon(Icons.settings),
+                  tooltip: 'Settings',
+                  onPressed: widget.onOpenSettings,
+                ),
               IconButton(
                 icon: const Icon(Icons.refresh),
                 tooltip: 'Reset to idle',

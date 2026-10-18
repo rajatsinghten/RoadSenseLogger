@@ -7,8 +7,10 @@ import 'dart:io';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:roadsense_logger/app/app.dart';
 import 'package:roadsense_logger/app/providers.dart';
+import 'package:roadsense_logger/data/settings/settings_store.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -16,7 +18,13 @@ Future<void> main() async {
   final sessionRoot = Directory('${supportDir.path}/sessions');
   await sessionRoot.create(recursive: true);
 
-  final overrides = [sessionRootDirProvider.overrideWithValue(sessionRoot)];
+  final prefs = await SharedPreferences.getInstance();
+  final overrides = [
+    sessionRootDirProvider.overrideWithValue(sessionRoot),
+    settingsStoreProvider.overrideWithValue(
+      SharedPreferencesSettingsStore(prefs),
+    ),
+  ];
   final container = ProviderContainer(overrides: overrides);
   try {
     final report = await container.read(recoveryServiceProvider).recoverAll();
@@ -30,11 +38,6 @@ Future<void> main() async {
   }
 
   runApp(
-    ProviderScope(
-      overrides: overrides,
-      child: RoadSenseApp(
-        controller: container.read(recordingControllerProvider),
-      ),
-    ),
+    ProviderScope(overrides: overrides, child: const RoadSenseApp()),
   );
 }

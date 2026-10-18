@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:roadsense_logger/app/app.dart';
+import 'package:roadsense_logger/app/providers.dart';
 import 'package:roadsense_logger/core/errors/app_failure.dart';
 import 'package:roadsense_logger/domain/models/session_config.dart';
 import 'package:roadsense_logger/domain/recording_state_machine.dart';
 
 import '../helpers/fake_recording_controller.dart';
+import '../helpers/in_memory_settings_store.dart';
 
 void main() {
   late FakeRecordingController controller;
@@ -14,7 +17,13 @@ void main() {
     controller = FakeRecordingController();
   });
 
-  Widget buildApp() => RoadSenseApp(controller: controller);
+  Widget buildApp() => ProviderScope(
+    overrides: [
+      recordingControllerProvider.overrideWithValue(controller),
+      settingsStoreProvider.overrideWithValue(InMemorySettingsStore()),
+    ],
+    child: const RoadSenseApp(),
+  );
 
   group('RecordingScreen', () {
     testWidgets('shows preview, metrics and a Record control when idle', (

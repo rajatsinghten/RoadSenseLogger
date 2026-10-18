@@ -6,8 +6,11 @@ import 'dart:io';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:roadsense_logger/core/logging/logger.dart';
+import 'package:roadsense_logger/domain/models/session_config.dart';
 import 'package:roadsense_logger/data/session/session_repository.dart';
 import 'package:roadsense_logger/data/session/session_store.dart';
+import 'package:roadsense_logger/data/settings/settings_store.dart';
+import 'package:roadsense_logger/features/settings/settings_controller.dart';
 import 'package:roadsense_logger/services/camera/camera_video_recorder.dart';
 import 'package:roadsense_logger/services/camera/video_recorder.dart';
 import 'package:roadsense_logger/services/export/export_manager.dart';
@@ -20,6 +23,16 @@ import 'package:roadsense_logger/services/recording/recording_session_manager.da
 import 'package:roadsense_logger/services/sensors/sensor_source.dart';
 
 final loggerProvider = Provider<Logger>((ref) => Logger());
+
+/// Backing store for settings; overridden in tests with an in-memory store.
+final settingsStoreProvider = Provider<SettingsStore>(
+  (ref) => throw StateError('settingsStoreProvider must be overridden'),
+);
+
+final settingsControllerProvider =
+    StateNotifierProvider<SettingsController, SessionSettings>(
+      (ref) => SettingsController(ref.watch(settingsStoreProvider)),
+    );
 
 /// Root directory for session storage; overridden once at bootstrap.
 final sessionRootDirProvider = Provider<Directory>(
