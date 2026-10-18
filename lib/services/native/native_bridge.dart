@@ -9,6 +9,8 @@ import 'package:roadsense_logger/core/time/timestamps.dart';
 import 'package:roadsense_logger/domain/models/gps_fix.dart';
 import 'package:roadsense_logger/domain/models/imu_event.dart';
 import 'package:roadsense_logger/domain/models/sensor_info.dart';
+import 'package:roadsense_logger/services/location/location_source.dart';
+import 'package:roadsense_logger/services/sensors/sensor_source.dart';
 
 /// One decoded native IMU batch.
 class NativeSensorBatch {
@@ -42,7 +44,7 @@ class NativeGpsEvent {
   final String? reason;
 }
 
-class NativeBridge {
+class NativeBridge implements SensorSource, LocationSource {
   NativeBridge({
     MethodChannel? methodChannel,
     EventChannel? eventChannel,
@@ -60,6 +62,7 @@ class NativeBridge {
   final EventChannel _gpsEvents;
 
   /// Decoded IMU batches (ACC and GYRO interleaved in arrival order).
+  @override
   Stream<NativeSensorBatch> get sensorBatches =>
       _events.receiveBroadcastStream().map(decodeSensorBatch);
 
@@ -91,6 +94,7 @@ class NativeBridge {
   }
 
   /// Decoded GPS events (accepted fixes and rejection records).
+  @override
   Stream<NativeGpsEvent> get gpsEvents =>
       _gpsEvents.receiveBroadcastStream().map(decodeGpsEvent);
 
@@ -116,6 +120,7 @@ class NativeBridge {
 
   /// Requests IMU collection. [accPeriodUs]/[gyroPeriodUs] are nominal
   /// sampling periods (0 = fastest); achieved rates are measured separately.
+  @override
   Future<({bool accelerometerAvailable, bool gyroscopeAvailable})>
   startSensors({required int accPeriodUs, required int gyroPeriodUs}) async {
     final result = (await _method.invokeMapMethod<String, Object?>(
@@ -128,14 +133,18 @@ class NativeBridge {
     );
   }
 
+  @override
   Future<void> stopSensors() => _method.invokeMethod<void>('stopSensors');
 
   /// Starts high-accuracy GPS collection at [intervalMs] nominal interval.
+  @override
   Future<void> startGps({required int intervalMs}) =>
       _method.invokeMethod<void>('startGps', {'intervalMs': intervalMs});
 
+  @override
   Future<void> stopGps() => _method.invokeMethod<void>('stopGps');
 
+  @override
   Future<List<SensorInfo>> getSensorInfo() async {
     final raw = (await _method.invokeListMethod<Object?>('getSensorInfo'))!;
     return raw
