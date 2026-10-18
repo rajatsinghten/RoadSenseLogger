@@ -21,6 +21,13 @@ class VideoConfig {
   /// Android; recorded as a request only (see `specs/architecture.md` §6).
   final int fps;
   final bool audio;
+
+  /// Whether two configurations request the same hardware setup.
+  bool matches(VideoConfig other) =>
+      width == other.width &&
+      height == other.height &&
+      fps == other.fps &&
+      audio == other.audio;
 }
 
 /// Captured recording-start reference (FR-014).

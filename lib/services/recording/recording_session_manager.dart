@@ -14,6 +14,7 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:math';
 
+import 'package:flutter/widgets.dart';
 import 'package:roadsense_logger/core/errors/app_failure.dart';
 import 'package:roadsense_logger/core/time/timestamps.dart';
 import 'package:roadsense_logger/data/session/json_writer.dart';
@@ -32,6 +33,7 @@ import 'package:roadsense_logger/services/location/gps_recorder.dart';
 import 'package:roadsense_logger/services/location/gps_stats.dart';
 import 'package:roadsense_logger/services/location/location_source.dart';
 import 'package:roadsense_logger/services/native/native_control.dart';
+import 'package:roadsense_logger/services/recording/recording_controller.dart';
 import 'package:roadsense_logger/services/resampling/resampler.dart';
 import 'package:roadsense_logger/services/sensors/sensor_recorder.dart';
 import 'package:roadsense_logger/services/sensors/sensor_source.dart';
@@ -55,7 +57,7 @@ class RecordingSnapshot {
   final List<String> warnings;
 }
 
-class RecordingSessionManager {
+class RecordingSessionManager implements RecordingController {
   RecordingSessionManager({
     required this.sensors,
     required this.location,
@@ -114,15 +116,33 @@ class RecordingSessionManager {
   int _freeStorageBytes = 0;
   SessionMetadata? _lastMetadata;
 
+  @override
   RecordingState get state => _machine.state;
+
+  VideoConfig? _preparedConfig;
+
+  /// Initializes the camera for the live preview before recording starts
+  /// (FR-013). Reused by [start] when the configuration matches.
+  @override
+  Future<void> prepareCamera(VideoConfig config) async {
+    if (video.isInitialized &&
+        _preparedConfig != null &&
+        _preparedConfig!.matches(config)) {
+      return;
+    }
+    await video.initialize(config);
+    _preparedConfig = config;
+  }
 
   Stream<RecordingState> get stateChanges => _stateController.stream;
 
+  @override
   Stream<RecordingSnapshot> get snapshots => _snapshotController.stream;
 
   SessionPaths? get sessionPaths => _paths;
 
   /// Metadata of the most recently completed session, if any.
+  @override
   SessionMetadata? get lastMetadata => _lastMetadata;
 
   /// Monotonic clock in elapsed-realtime nanoseconds. Production anchors a
@@ -146,6 +166,7 @@ class RecordingSessionManager {
   }
 
   /// Starts a recording session (IDLE → PREPARING → RECORDING).
+  @override
   Future<void> start(SessionConfig config) async {
     _transition(RecordingState.preparing, reason: 'user start');
     _config = config;
@@ -175,7 +196,7 @@ class RecordingSessionManager {
         );
       }
 
-      await video.initialize(
+      await prepareCamera(
         VideoConfig(
           width: config.settings.videoWidth,
           height: config.settings.videoHeight,
@@ -257,6 +278,7 @@ class RecordingSessionManager {
 
   /// Stops recording and finalizes all session files
   /// (RECORDING → FINALIZING → COMPLETED).
+  @override
   Future<void> stop() async {
     _transition(RecordingState.finalizing, reason: 'user stop');
     await _finalize();
@@ -264,6 +286,7 @@ class RecordingSessionManager {
 
   /// Marks an interruption (camera loss, storage exhaustion, …) and
   /// finalizes best-effort (RECORDING → INTERRUPTED → FINALIZING).
+  @override
   Future<void> interrupt(String reason) async {
     _transition(RecordingState.interrupted, reason: reason);
     _interrupted = true;
@@ -503,6 +526,10 @@ class RecordingSessionManager {
     _snapshotController.add(snapshot());
   }
 
+  @override
+  Widget buildPreview() => video.buildPreview();
+
+  @override
   RecordingSnapshot snapshot() {
     final sensorReport =
         _sensorRecorder?.report() ??
@@ -551,6 +578,7 @@ class RecordingSessionManager {
   }
 
   /// Releases session data and returns the machine to IDLE for the next run.
+  @override
   void reset() {
     _transition(RecordingState.idle);
     _imuEvents.clear();
