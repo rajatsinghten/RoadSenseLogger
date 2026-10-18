@@ -11,15 +11,16 @@ class Csv {
   static String field(String? value) {
     if (value == null || value.isEmpty) return '';
     final needsQuoting =
-        value.contains(',') || value.contains('"') || value.contains('\n') ||
-            value.contains('\r');
+        value.contains(',') ||
+        value.contains('"') ||
+        value.contains('\n') ||
+        value.contains('\r');
     if (!needsQuoting) return value;
     return '"${value.replaceAll('"', '""')}"';
   }
 
   /// Joins fields into one CSV row (without trailing newline).
-  static String row(Iterable<String?> fields) =>
-      fields.map(field).join(',');
+  static String row(Iterable<String?> fields) => fields.map(field).join(',');
 
   /// Formats an integer value, or empty when null.
   static String formatInt(int? value) => value == null ? '' : value.toString();

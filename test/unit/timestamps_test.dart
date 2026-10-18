@@ -30,13 +30,14 @@ void main() {
     );
 
     test('derives unix ms from elapsed ns', () {
-      expect(mapping.unixMsFromElapsedNs(1_500_000_000),
-          1_700_000_000_000 + 500);
+      expect(
+        mapping.unixMsFromElapsedNs(1_500_000_000),
+        1_700_000_000_000 + 500,
+      );
     });
 
     test('derives unix ms for earlier events', () {
-      expect(mapping.unixMsFromElapsedNs(900_000_000),
-          1_700_000_000_000 - 100);
+      expect(mapping.unixMsFromElapsedNs(900_000_000), 1_700_000_000_000 - 100);
     });
 
     test('rounds to nearest millisecond', () {

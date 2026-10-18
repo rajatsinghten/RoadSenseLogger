@@ -42,9 +42,9 @@ class ClockMapping {
   }
 
   Map<String, Object> toJson() => {
-        'session_start_elapsed_ns': sessionStartElapsedNs,
-        'session_start_unix_ms': sessionStartUnixMs,
-      };
+    'session_start_elapsed_ns': sessionStartElapsedNs,
+    'session_start_unix_ms': sessionStartUnixMs,
+  };
 
   factory ClockMapping.fromJson(Map<String, Object?> json) {
     return ClockMapping(
