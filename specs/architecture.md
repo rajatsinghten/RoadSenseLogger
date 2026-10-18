@@ -155,8 +155,9 @@ Pure Dart `Resampler.generate(...)` producing grid rows for `t ∈ [t0, t1]`:
   any endpoint exactly on the grid).
 - IMU: linear interpolation between consecutive valid samples bracketing `t`; if bracketing gap
   `> maxImuGapMs` (default 250 ms) or a side is missing → empty fields. Duplicate timestamps:
-  the later value is used for right-side interpolation, the earlier for left-side (deterministic;
-  documented; no averaging).
+  a grid point landing exactly on sample timestamp(s) takes the last-arriving sample at that
+  timestamp; interpolation strictly between distinct timestamps uses the bracketing pair as-is
+  (deterministic; documented; no averaging).
 - GPS forward-fill: latest fix with `timestamp_ns ≤ grid_ns`; `gps_age_s = (grid_ns − fix_ns)/1e9`;
   if age `> maxGpsAgeS` (default 5 s) → GPS columns empty **except** `gps_age_s` which still
   reports the real age. Never future fixes; no coordinate interpolation.
