@@ -7,20 +7,27 @@ import 'package:roadsense_logger/core/errors/app_failure.dart';
 import 'package:roadsense_logger/domain/models/session_config.dart';
 import 'package:roadsense_logger/domain/recording_state_machine.dart';
 
+import '../helpers/fake_gates.dart';
 import '../helpers/fake_recording_controller.dart';
 import '../helpers/in_memory_settings_store.dart';
 
 void main() {
   late FakeRecordingController controller;
+  late FakePermissionsGate permissions;
+  late FakeRecordingEnvironment environment;
 
   setUp(() {
     controller = FakeRecordingController();
+    permissions = FakePermissionsGate();
+    environment = FakeRecordingEnvironment();
   });
 
   Widget buildApp() => ProviderScope(
     overrides: [
       recordingControllerProvider.overrideWithValue(controller),
       settingsStoreProvider.overrideWithValue(InMemorySettingsStore()),
+      permissionsGateProvider.overrideWithValue(permissions),
+      recordingEnvironmentProvider.overrideWithValue(environment),
     ],
     child: const RoadSenseApp(),
   );
@@ -51,6 +58,8 @@ void main() {
       expect(find.text('Session details'), findsOneWidget);
       await tester.enterText(find.byType(TextField), 'highway run');
       await tester.tap(find.text('Start recording'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Record anyway'));
       await tester.pumpAndSettle();
 
       expect(controller.startCount, 1);
@@ -94,6 +103,8 @@ void main() {
       await tester.tap(find.text('Record'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Start recording'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Record anyway'));
       await tester.pumpAndSettle();
 
       expect(find.text('camera is busy'), findsOneWidget);

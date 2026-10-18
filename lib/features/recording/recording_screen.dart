@@ -5,17 +5,21 @@ library;
 
 import 'package:flutter/material.dart';
 import 'package:roadsense_logger/core/errors/app_failure.dart';
+import 'package:roadsense_logger/core/permissions/permission_service.dart';
 import 'package:roadsense_logger/domain/models/session_config.dart';
 import 'package:roadsense_logger/domain/recording_state_machine.dart';
 import 'package:roadsense_logger/features/recording/pre_record_dialog.dart';
 import 'package:roadsense_logger/services/camera/video_recorder.dart';
 import 'package:roadsense_logger/services/recording/recording_controller.dart';
+import 'package:roadsense_logger/services/recording/recording_environment.dart';
 import 'package:roadsense_logger/services/recording/recording_session_manager.dart';
 
 class RecordingScreen extends StatefulWidget {
   const RecordingScreen({
     super.key,
     required this.controller,
+    required this.permissions,
+    required this.environment,
     this.settings = const SessionSettings(),
     this.onOpenSettings,
     this.onOpenHistory,
@@ -24,6 +28,12 @@ class RecordingScreen extends StatefulWidget {
   });
 
   final RecordingController controller;
+
+  /// Permission checks before recording (FR-080).
+  final PermissionsGate permissions;
+
+  /// Keep-awake / orientation-lock around recording (FR-005).
+  final RecordingEnvironment environment;
 
   /// Settings used to prepare the pre-recording camera preview.
   final SessionSettings settings;
@@ -70,13 +80,51 @@ class _RecordingScreenState extends State<RecordingScreen> {
   }
 
   Future<void> _startRecording() async {
+    final granted = await widget.permissions.ensurePermissions(
+      audio: widget.settings.audioEnabled,
+    );
+    if (!granted) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Camera permission is required to record video'),
+          ),
+        );
+      }
+      return;
+    }
     final initial = _lastConfig ?? await widget.loadLastConfig?.call();
     if (!mounted) return;
     final config = await showPreRecordDialog(context, initial: initial);
     if (config == null || !mounted) return;
+    final gps = widget.controller.snapshot().gpsReport;
+    if (gps.acceptedCount == 0) {
+      final proceed = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('No GPS fix yet'),
+          content: const Text(
+            'No GPS fix has been received. Positions in this session may be '
+            'missing. Record anyway?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Record anyway'),
+            ),
+          ],
+        ),
+      );
+      if (proceed != true || !mounted) return;
+    }
     setState(() => _busy = true);
     try {
       await widget.controller.start(config);
+      await widget.environment.enterRecording();
       _lastConfig = config;
       await widget.saveLastConfig?.call(config);
     } on AppFailure catch (error) {
@@ -94,6 +142,7 @@ class _RecordingScreenState extends State<RecordingScreen> {
     setState(() => _busy = true);
     try {
       await widget.controller.stop();
+      await widget.environment.exitRecording();
       final id = widget.controller.lastMetadata?.sessionId;
       if (mounted) {
         ScaffoldMessenger.of(

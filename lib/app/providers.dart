@@ -6,6 +6,7 @@ import 'dart:io';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:roadsense_logger/core/logging/logger.dart';
+import 'package:roadsense_logger/core/permissions/permission_service.dart';
 import 'package:roadsense_logger/domain/models/session_config.dart';
 import 'package:roadsense_logger/data/session/session_repository.dart';
 import 'package:roadsense_logger/data/session/session_store.dart';
@@ -19,10 +20,19 @@ import 'package:roadsense_logger/services/native/native_bridge.dart';
 import 'package:roadsense_logger/services/native/native_control.dart';
 import 'package:roadsense_logger/services/recovery/recovery_service.dart';
 import 'package:roadsense_logger/services/recording/recording_controller.dart';
+import 'package:roadsense_logger/services/recording/recording_environment.dart';
 import 'package:roadsense_logger/services/recording/recording_session_manager.dart';
 import 'package:roadsense_logger/services/sensors/sensor_source.dart';
 
 final loggerProvider = Provider<Logger>((ref) => Logger());
+
+final permissionsGateProvider = Provider<PermissionsGate>(
+  (ref) => PermissionService(ref.watch(nativeControlProvider)),
+);
+
+final recordingEnvironmentProvider = Provider<RecordingEnvironment>(
+  (ref) => SystemRecordingEnvironment(),
+);
 
 /// Backing store for settings; overridden in tests with an in-memory store.
 final settingsStoreProvider = Provider<SettingsStore>(

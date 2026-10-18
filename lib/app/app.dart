@@ -28,6 +28,8 @@ class RoadSenseApp extends ConsumerWidget {
       home: RecordingScreen(
         controller: controller,
         settings: settings,
+        permissions: ref.watch(permissionsGateProvider),
+        environment: ref.watch(recordingEnvironmentProvider),
         onOpenSettings: () => _openSettings(context, controller),
         onOpenHistory: () => Navigator.of(context).push(
           MaterialPageRoute<void>(
