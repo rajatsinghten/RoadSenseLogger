@@ -39,7 +39,8 @@ Layered, feature-first hybrid (see `specs/architecture.md` for the full contract
 - `android/app/src/main/kotlin/` — native Kotlin: sensor/location collectors, foreground
   service, clock mapping, channel plumbing.
 - `specs/` — requirements, architecture, tasks, acceptance (spec-driven development).
-- `test/unit/`, `test/widget/`, `test/integration/` — automated tests.
+- `test/unit/`, `test/widget/` — automated tests; `integration_test/` —
+  device-run integration tests (standard Flutter convention).
 
 Use constructor-based dependency injection and interface seams for testability. Keep UI code
 free of direct file I/O and platform-channel access.
