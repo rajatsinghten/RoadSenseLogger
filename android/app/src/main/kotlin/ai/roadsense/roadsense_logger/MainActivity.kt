@@ -3,6 +3,7 @@ package ai.roadsense.roadsense_logger
 import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Build
+import ai.roadsense.roadsense_logger.location.LocationCollector
 import ai.roadsense.roadsense_logger.recording.RecordingForegroundService
 import ai.roadsense.roadsense_logger.sensors.SensorCollector
 import io.flutter.embedding.android.FlutterActivity
@@ -21,6 +22,8 @@ class MainActivity : FlutterActivity() {
 
     private var sensorCollector: SensorCollector? = null
     private var sensorSink: EventChannel.EventSink? = null
+    private var locationCollector: LocationCollector? = null
+    private var gpsSink: EventChannel.EventSink? = null
     private var pendingPermissionResult: MethodChannel.Result? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
@@ -37,6 +40,21 @@ class MainActivity : FlutterActivity() {
 
                 override fun onCancel(arguments: Any?) {
                     sensorSink = null
+                }
+            },
+        )
+
+        EventChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            CHANNEL_GPS,
+        ).setStreamHandler(
+            object : EventChannel.StreamHandler {
+                override fun onListen(arguments: Any?, events: EventChannel.EventSink) {
+                    gpsSink = events
+                }
+
+                override fun onCancel(arguments: Any?) {
+                    gpsSink = null
                 }
             },
         )
@@ -64,6 +82,14 @@ class MainActivity : FlutterActivity() {
                     ),
                 )
                 "getElapsedNs" -> result.success(SensorCollector.elapsedRealtimeNs())
+                "startGps" -> startGps(
+                    call.argument<Int>("intervalMs") ?: 1000,
+                    result,
+                )
+                "stopGps" -> {
+                    locationCollector?.stop()
+                    result.success(null)
+                }
                 "startForeground" -> {
                     RecordingForegroundService.start(
                         this,
@@ -85,6 +111,27 @@ class MainActivity : FlutterActivity() {
                 else -> result.notImplemented()
             }
         }
+    }
+
+    private fun startGps(intervalMs: Int, result: MethodChannel.Result) {
+        if (checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) !=
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            result.error(
+                "NO_LOCATION_PERMISSION",
+                "Fine location permission is required for GPS collection",
+                null,
+            )
+            return
+        }
+        val collector = locationCollector ?: LocationCollector(
+            applicationContext,
+            onFix = { event ->
+                runOnUiThread { gpsSink?.success(event) }
+            },
+        ).also { locationCollector = it }
+        collector.start(intervalMs.toLong())
+        result.success(null)
     }
 
     private fun startSensors(
@@ -195,6 +242,7 @@ class MainActivity : FlutterActivity() {
     companion object {
         private const val CHANNEL_NATIVE = "roadsense/native"
         private const val CHANNEL_SENSORS = "roadsense/sensors"
+        private const val CHANNEL_GPS = "roadsense/gps"
         private const val PERMISSION_REQUEST_CODE = 4311
     }
 }

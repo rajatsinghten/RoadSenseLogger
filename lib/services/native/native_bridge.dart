@@ -6,6 +6,7 @@ library;
 
 import 'package:flutter/services.dart';
 import 'package:roadsense_logger/core/time/timestamps.dart';
+import 'package:roadsense_logger/domain/models/gps_fix.dart';
 import 'package:roadsense_logger/domain/models/imu_event.dart';
 import 'package:roadsense_logger/domain/models/sensor_info.dart';
 
@@ -30,22 +31,39 @@ class NativeSensorBatch {
   final bool isOverflowMarker;
 }
 
+/// One decoded native GPS event: an accepted fix or a rejection record.
+class NativeGpsEvent {
+  const NativeGpsEvent.accepted(this.fix) : accepted = true, reason = null;
+
+  const NativeGpsEvent.rejected(this.reason) : fix = null, accepted = false;
+
+  final GpsFix? fix;
+  final bool accepted;
+  final String? reason;
+}
+
 class NativeBridge {
-  NativeBridge({MethodChannel? methodChannel, EventChannel? eventChannel})
-    : _method = methodChannel ?? const MethodChannel(_methodName),
-      _events = eventChannel ?? const EventChannel(_eventsName);
+  NativeBridge({
+    MethodChannel? methodChannel,
+    EventChannel? eventChannel,
+    EventChannel? gpsEventChannel,
+  }) : _method = methodChannel ?? const MethodChannel(_methodName),
+       _events = eventChannel ?? const EventChannel(_eventsName),
+       _gpsEvents = gpsEventChannel ?? const EventChannel(_gpsEventsName);
 
   static const _methodName = 'roadsense/native';
   static const _eventsName = 'roadsense/sensors';
+  static const _gpsEventsName = 'roadsense/gps';
 
   final MethodChannel _method;
   final EventChannel _events;
+  final EventChannel _gpsEvents;
 
   /// Decoded IMU batches (ACC and GYRO interleaved in arrival order).
   Stream<NativeSensorBatch> get sensorBatches =>
-      _events.receiveBroadcastStream().map(_decodeBatch);
+      _events.receiveBroadcastStream().map(decodeSensorBatch);
 
-  static NativeSensorBatch _decodeBatch(Object? raw) {
+  static NativeSensorBatch decodeSensorBatch(Object? raw) {
     final map = (raw as Map).cast<String, Object?>();
     final kind = map['sensor'] as String;
     if (kind == 'OVERFLOW') {
@@ -72,6 +90,30 @@ class NativeBridge {
     return NativeSensorBatch(sensor: sensor, events: events);
   }
 
+  /// Decoded GPS events (accepted fixes and rejection records).
+  Stream<NativeGpsEvent> get gpsEvents =>
+      _gpsEvents.receiveBroadcastStream().map(decodeGpsEvent);
+
+  static NativeGpsEvent decodeGpsEvent(Object? raw) {
+    final map = (raw as Map).cast<String, Object?>();
+    if (map['accepted'] != true) {
+      return NativeGpsEvent.rejected(
+        (map['reason'] as String?) ?? 'unspecified',
+      );
+    }
+    final fix = GpsFix(
+      timestampNs: (map['timestamp_ns'] as num).toInt(),
+      unixTimeMs: (map['unix_time_ms'] as num).toInt(),
+      latitude: (map['latitude'] as num).toDouble(),
+      longitude: (map['longitude'] as num).toDouble(),
+      altitudeM: (map['altitude_m'] as num?)?.toDouble(),
+      speedMps: (map['speed_mps'] as num?)?.toDouble(),
+      bearingDeg: (map['bearing_deg'] as num?)?.toDouble(),
+      accuracyM: (map['accuracy_m'] as num?)?.toDouble(),
+    );
+    return NativeGpsEvent.accepted(fix);
+  }
+
   /// Requests IMU collection. [accPeriodUs]/[gyroPeriodUs] are nominal
   /// sampling periods (0 = fastest); achieved rates are measured separately.
   Future<({bool accelerometerAvailable, bool gyroscopeAvailable})>
@@ -87,6 +129,12 @@ class NativeBridge {
   }
 
   Future<void> stopSensors() => _method.invokeMethod<void>('stopSensors');
+
+  /// Starts high-accuracy GPS collection at [intervalMs] nominal interval.
+  Future<void> startGps({required int intervalMs}) =>
+      _method.invokeMethod<void>('startGps', {'intervalMs': intervalMs});
+
+  Future<void> stopGps() => _method.invokeMethod<void>('stopGps');
 
   Future<List<SensorInfo>> getSensorInfo() async {
     final raw = (await _method.invokeListMethod<Object?>('getSensorInfo'))!;
