@@ -36,6 +36,17 @@ android {
     }
 }
 
+// Release ships for 64-bit ARM phones only. Flutter's plugin manages
+// ndk.abiFilters itself, so other-ABI native libraries bundled by plugins are
+// excluded at packaging time instead (debug keeps them for emulators).
+androidComponents {
+    onVariants(selector().withBuildType("release")) { variant ->
+        variant.packaging.jniLibs.excludes.addAll(
+            listOf("lib/armeabi-v7a/**", "lib/x86/**", "lib/x86_64/**"),
+        )
+    }
+}
+
 flutter {
     source = "../.."
 }
