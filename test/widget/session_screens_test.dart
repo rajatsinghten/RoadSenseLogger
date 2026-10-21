@@ -168,16 +168,50 @@ void main() {
       expect(deleted, isTrue);
     });
 
-    testWidgets('open folder delegates to the exporter', (tester) async {
+    testWidgets('save to Downloads builds the archive and reports where', (
+      tester,
+    ) async {
       await useTallScreen(tester);
       final exporter = FakeSessionExporter();
       await tester.pumpWidget(detailPage(record(), exporter));
 
-      await tester.tap(find.text('Open folder'));
+      await tester.tap(find.text('Save full archive to Downloads'));
       await tester.pumpAndSettle();
 
-      expect(exporter.openCount, 1);
-      expect(exporter.lastOpenedSessionId, 'session_20261018_120000_aaaaaa');
+      expect(exporter.fullArchiveCount, 1);
+      expect(exporter.saveCount, 1);
+      expect(
+        find.text(
+          'Saved to Download/RoadSense/session_20261018_120000_aaaaaa.zip',
+        ),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('save CSVs to Downloads uses the CSV-only archive', (
+      tester,
+    ) async {
+      await useTallScreen(tester);
+      final exporter = FakeSessionExporter();
+      await tester.pumpWidget(detailPage(record(), exporter));
+
+      await tester.tap(find.text('Save CSVs to Downloads'));
+      await tester.pumpAndSettle();
+
+      expect(exporter.csvArchiveCount, 1);
+      expect(exporter.lastSaved!.path, endsWith('_csv.zip'));
+    });
+
+    testWidgets('a failed save shows the error', (tester) async {
+      await useTallScreen(tester);
+      final exporter = FakeSessionExporter()
+        ..saveError = ExportFailure('Could not save x.zip to Downloads');
+      await tester.pumpWidget(detailPage(record(), exporter));
+
+      await tester.tap(find.text('Save full archive to Downloads'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Could not save x.zip to Downloads'), findsOneWidget);
     });
   });
 

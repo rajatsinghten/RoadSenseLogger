@@ -174,13 +174,19 @@ class FakeNativeControl implements NativeControl {
     androidVersion: '15',
   );
 
-  int openFolderCount = 0;
-  String? lastOpenedFolder;
+  int saveToDownloadsCount = 0;
+  String? lastSavedPath;
+  Object? saveToDownloadsError;
 
   @override
-  Future<void> openFolder(String path) async {
-    openFolderCount++;
-    lastOpenedFolder = path;
+  Future<String> saveToDownloads(
+    String path, {
+    required String displayName,
+  }) async {
+    if (saveToDownloadsError != null) throw saveToDownloadsError!;
+    saveToDownloadsCount++;
+    lastSavedPath = path;
+    return 'Download/RoadSense/$displayName';
   }
 
   @override

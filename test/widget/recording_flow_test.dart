@@ -30,6 +30,16 @@ void main() {
   );
 
   group('permission flow (FR-080)', () {
+    testWidgets('all permissions are requested when the app opens', (
+      tester,
+    ) async {
+      await tester.pumpWidget(buildApp());
+      await tester.pumpAndSettle();
+
+      expect(permissions.ensureCount, 1);
+      expect(controller.startCount, 0);
+    });
+
     testWidgets('denied permission blocks recording with a clear message', (
       tester,
     ) async {
@@ -37,14 +47,13 @@ void main() {
       await tester.pumpWidget(buildApp());
       await tester.pump();
 
+      expect(permissions.ensureCount, 1); // at launch
+
       await tester.tap(find.text('Record'));
       await tester.pumpAndSettle();
 
-      expect(permissions.ensureCount, 1);
-      expect(
-        find.text('Camera permission is required to record video'),
-        findsOneWidget,
-      );
+      expect(permissions.ensureCount, 2);
+      expect(find.textContaining('Camera permission'), findsOneWidget);
       expect(find.text('Session details'), findsNothing);
       expect(controller.startCount, 0);
     });
@@ -70,12 +79,14 @@ void main() {
     ) async {
       await tester.pumpWidget(buildApp());
       await tester.pump();
+      expect(controller.prepareGpsCount, 1);
 
       await tester.tap(find.text('Record'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Start recording'));
       await tester.pumpAndSettle();
 
+      expect(controller.prepareGpsCount, 2);
       expect(find.text('No GPS fix yet'), findsOneWidget);
       expect(controller.startCount, 0);
 

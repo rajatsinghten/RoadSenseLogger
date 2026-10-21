@@ -121,16 +121,54 @@ void main() {
       expect(find.textContaining('Camera preview unavailable'), findsOneWidget);
     });
 
-    testWidgets('reset is available after completion', (tester) async {
+    Future<void> recordOnce(WidgetTester tester) async {
+      await tester.tap(find.text('Record'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Start recording'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Record anyway'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Stop'));
+      await tester.pumpAndSettle();
+      // Let the "Session saved" snackbar expire so it does not cover Record.
+      await tester.pump(const Duration(seconds: 5));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('a second recording works without restarting the app', (
+      tester,
+    ) async {
+      await tester.pumpWidget(buildApp());
+      await tester.pump();
+
+      await recordOnce(tester);
+      expect(controller.state, RecordingState.idle);
+      await recordOnce(tester);
+
+      expect(controller.startCount, 2);
+      expect(controller.stopCount, 2);
+      expect(find.text('Record'), findsOneWidget);
+    });
+
+    testWidgets('stopping re-prepares the camera preview', (tester) async {
+      await tester.pumpWidget(buildApp());
+      await tester.pumpAndSettle();
+      final before = controller.prepareCount;
+
+      await recordOnce(tester);
+
+      expect(controller.prepareCount, greaterThan(before));
+    });
+
+    testWidgets('a session finished by interruption can be followed by a '
+        'new one', (tester) async {
       controller.state = RecordingState.completed;
       await tester.pumpWidget(buildApp());
       await tester.pump();
 
-      await tester.tap(find.byIcon(Icons.refresh));
-      await tester.pumpAndSettle();
+      await recordOnce(tester);
 
-      expect(controller.resetCount, 1);
-      expect(find.text('Record'), findsOneWidget);
+      expect(controller.startCount, 1);
     });
   });
 }

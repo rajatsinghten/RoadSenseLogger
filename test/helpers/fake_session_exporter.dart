@@ -7,14 +7,14 @@ import 'package:roadsense_logger/services/export/export_manager.dart';
 class FakeSessionExporter implements SessionExporter {
   Object? fullArchiveError;
   Object? csvArchiveError;
-  Object? openError;
+  Object? saveError;
 
   int fullArchiveCount = 0;
   int csvArchiveCount = 0;
   int shareCount = 0;
-  int openCount = 0;
+  int saveCount = 0;
   File? lastShared;
-  String? lastOpenedSessionId;
+  File? lastSaved;
 
   @override
   Future<File> createFullArchive(SessionRecord record) async {
@@ -37,9 +37,10 @@ class FakeSessionExporter implements SessionExporter {
   }
 
   @override
-  Future<void> openSessionFolder(SessionRecord record) async {
-    if (openError != null) throw openError!;
-    openCount++;
-    lastOpenedSessionId = record.id;
+  Future<String> saveToDownloads(File archive) async {
+    if (saveError != null) throw saveError!;
+    saveCount++;
+    lastSaved = archive;
+    return 'Download/RoadSense/${archive.uri.pathSegments.last}';
   }
 }

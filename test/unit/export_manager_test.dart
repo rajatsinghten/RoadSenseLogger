@@ -133,11 +133,34 @@ void main() {
       },
     );
 
-    test('openSessionFolder delegates to the native viewer', () async {
-      final record = makeSession(id: 'session_20261018_170000_ffffff');
-      await exportManager.openSessionFolder(record);
-      expect(native.openFolderCount, 1);
-      expect(native.lastOpenedFolder, record.directory.path);
+    test(
+      'saveToDownloads copies the archive and removes the temp copy',
+      () async {
+        final record = makeSession(id: 'session_20261018_170000_ffffff');
+        final archive = await exportManager.createFullArchive(record);
+
+        final location = await exportManager.saveToDownloads(archive);
+
+        expect(
+          location,
+          'Download/RoadSense/session_20261018_170000_ffffff.zip',
+        );
+        expect(native.saveToDownloadsCount, 1);
+        expect(native.lastSavedPath, archive.path);
+        expect(archive.existsSync(), isFalse);
+      },
+    );
+
+    test('a failed save surfaces ExportFailure and cleans up', () async {
+      final record = makeSession(id: 'session_20261018_180000_gggggg');
+      final archive = await exportManager.createCsvArchive(record);
+      native.saveToDownloadsError = Exception('disk full');
+
+      await expectLater(
+        exportManager.saveToDownloads(archive),
+        throwsA(isA<ExportFailure>()),
+      );
+      expect(archive.existsSync(), isFalse);
     });
   });
 }

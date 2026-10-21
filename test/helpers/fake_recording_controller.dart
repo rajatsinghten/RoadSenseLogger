@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/widgets.dart';
+import 'package:roadsense_logger/core/errors/app_failure.dart';
 import 'package:roadsense_logger/domain/models/session_config.dart';
 import 'package:roadsense_logger/domain/models/session_metadata.dart';
 import 'package:roadsense_logger/domain/recording_state_machine.dart';
@@ -22,6 +23,7 @@ class FakeRecordingController implements RecordingController {
   int stopCount = 0;
   int resetCount = 0;
   int prepareCount = 0;
+  int prepareGpsCount = 0;
   Object? startError;
   Object? stopError;
   Object? previewError;
@@ -69,6 +71,11 @@ class FakeRecordingController implements RecordingController {
   }
 
   @override
+  Future<void> prepareGps() async {
+    prepareGpsCount++;
+  }
+
+  @override
   Widget buildPreview() {
     if (previewError != null) throw previewError!;
     return preview;
@@ -76,6 +83,10 @@ class FakeRecordingController implements RecordingController {
 
   @override
   Future<void> start(SessionConfig config) async {
+    // Mirrors the real state machine: only idle -> preparing is legal.
+    if (state != RecordingState.idle) {
+      throw StateTransitionError('Illegal recording transition ${state.name}');
+    }
     if (startError != null) throw startError!;
     startCount++;
     startedConfig = config;
