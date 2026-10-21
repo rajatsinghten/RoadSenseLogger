@@ -1,6 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<paths>
-    <!-- Sessions are stored under the app files directory (files/sessions). -->
-    <files-path name="session_files" path="." />
-    <cache-path name="cache" path="." />
-</paths>

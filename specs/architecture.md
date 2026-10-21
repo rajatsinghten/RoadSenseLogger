@@ -29,7 +29,7 @@ Two EventChannels + one MethodChannel under the `roadsense/native` channel names
 
 | Channel | Direction | Payload |
 |---|---|---|
-| `roadsense/native` (MethodChannel) | Dart → native | `initSensors`, `startSensors{accPeriodUs,gyroPeriodUs}`, `stopSensors`, `startGps{intervalMs}`, `stopGps`, `getSensorInfo`, `getClockMapping`, `startForeground`, `stopForeground`, `openFolder{path}` |
+| `roadsense/native` (MethodChannel) | Dart → native | `initSensors`, `startSensors{accPeriodUs,gyroPeriodUs}`, `stopSensors`, `startGps{intervalMs}`, `stopGps`, `getSensorInfo`, `getClockMapping`, `startForeground`, `stopForeground`, `saveToDownloads{path,displayName}` |
 | `roadsense/sensors` (EventChannel) | native → Dart | batched event maps (see §4) |
 | `roadsense/gps` (EventChannel) | native → Dart | one map per accepted fix |
 

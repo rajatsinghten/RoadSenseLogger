@@ -3,6 +3,7 @@ package ai.roadsense.roadsense_logger
 import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Build
+import ai.roadsense.roadsense_logger.export.DownloadsExporter
 import ai.roadsense.roadsense_logger.location.LocationCollector
 import ai.roadsense.roadsense_logger.recording.RecordingForegroundService
 import ai.roadsense.roadsense_logger.sensors.SensorCollector
@@ -10,6 +11,7 @@ import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodChannel
+import java.util.concurrent.Executors
 
 /**
  * Native integration entry point (see `specs/architecture.md` §2).
@@ -25,6 +27,7 @@ class MainActivity : FlutterActivity() {
     private var locationCollector: LocationCollector? = null
     private var gpsSink: EventChannel.EventSink? = null
     private var pendingPermissionResult: MethodChannel.Result? = null
+    private val ioExecutor = Executors.newSingleThreadExecutor()
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -90,7 +93,11 @@ class MainActivity : FlutterActivity() {
                     ),
                 )
                 "getFreeStorageBytes" -> result.success(freeStorageBytes())
-                "openFolder" -> openFolder(call.argument<String>("path"), result)
+                "saveToDownloads" -> saveToDownloads(
+                    call.argument<String>("path"),
+                    call.argument<String>("displayName"),
+                    result,
+                )
                 "startGps" -> startGps(
                     call.argument<Int>("intervalMs") ?: 1000,
                     result,
@@ -122,41 +129,62 @@ class MainActivity : FlutterActivity() {
         }
     }
 
+    /** Releases native collectors when the Flutter engine goes away, so
+     * sensors/GPS do not keep running with no Dart consumer. */
+    override fun cleanUpFlutterEngine(flutterEngine: FlutterEngine) {
+        sensorCollector?.stop()
+        locationCollector?.stop()
+        sensorSink = null
+        gpsSink = null
+        pendingPermissionResult?.error("ACTIVITY_DESTROYED", "Activity was destroyed", null)
+        pendingPermissionResult = null
+        super.cleanUpFlutterEngine(flutterEngine)
+    }
+
     private fun freeStorageBytes(): Long =
         android.os.StatFs(filesDir.absolutePath).availableBytes
 
-    private fun openFolder(path: String?, result: MethodChannel.Result) {
-        if (path == null) {
-            result.error("OPEN_FOLDER_FAILED", "No path given", null)
+    private fun saveToDownloads(
+        path: String?,
+        displayName: String?,
+        result: MethodChannel.Result,
+    ) {
+        if (path == null || displayName == null) {
+            result.error("SAVE_FAILED", "No archive path or name given", null)
             return
         }
-        try {
-            val uri = androidx.core.content.FileProvider.getUriForFile(
-                this,
-                "$packageName.fileprovider",
-                java.io.File(path),
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q &&
+            checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE) !=
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            result.error(
+                "NO_STORAGE_PERMISSION",
+                "Storage permission is required to save to Downloads on this Android version",
+                null,
             )
-            val intent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
-                setDataAndType(uri, "vnd.android.document/directory")
-                addFlags(
-                    android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or
-                        android.content.Intent.FLAG_ACTIVITY_NEW_TASK,
-                )
+            return
+        }
+        // Archives can be hundreds of MB; copying on the main thread would ANR.
+        ioExecutor.execute {
+            try {
+                val location = DownloadsExporter(applicationContext)
+                    .save(java.io.File(path), displayName)
+                runOnUiThread { result.success(location) }
+            } catch (error: java.io.IOException) {
+                runOnUiThread { result.error("SAVE_FAILED", error.message, null) }
             }
-            startActivity(intent)
-            result.success(null)
-        } catch (error: Exception) {
-            result.error("OPEN_FOLDER_FAILED", error.message, null)
         }
     }
 
     private fun startGps(intervalMs: Int, result: MethodChannel.Result) {
-        if (checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) !=
+        val precise = checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) ==
             PackageManager.PERMISSION_GRANTED
-        ) {
+        val coarse = checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) ==
+            PackageManager.PERMISSION_GRANTED
+        if (!precise && !coarse) {
             result.error(
                 "NO_LOCATION_PERMISSION",
-                "Fine location permission is required for GPS collection",
+                "Location permission is not granted. Allow Location for RoadSense Logger.",
                 null,
             )
             return
@@ -166,8 +194,23 @@ class MainActivity : FlutterActivity() {
             onFix = { event ->
                 runOnUiThread { gpsSink?.success(event) }
             },
+            onStatus = { code, message ->
+                runOnUiThread {
+                    gpsSink?.success(
+                        mapOf("kind" to "status", "status" to code, "message" to message),
+                    )
+                }
+            },
         ).also { locationCollector = it }
-        collector.start(intervalMs.toLong())
+        if (!collector.isLocationServiceEnabled()) {
+            result.error(
+                "LOCATION_SERVICES_OFF",
+                "Location services are turned off. Enable Location in system settings.",
+                null,
+            )
+            return
+        }
+        collector.start(intervalMs.toLong(), precise)
         result.success(null)
     }
 
@@ -226,6 +269,13 @@ class MainActivity : FlutterActivity() {
                     } else {
                         null
                     }
+                // Only needed for Downloads on Android 8–9; MediaStore after.
+                "legacyStorage" ->
+                    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+                        Manifest.permission.WRITE_EXTERNAL_STORAGE
+                    } else {
+                        null
+                    }
                 else -> null
             }
         }
@@ -270,6 +320,7 @@ class MainActivity : FlutterActivity() {
                 Manifest.permission.ACCESS_COARSE_LOCATION -> "coarseLocation"
                 Manifest.permission.RECORD_AUDIO -> "recordAudio"
                 Manifest.permission.POST_NOTIFICATIONS -> "notifications"
+                Manifest.permission.WRITE_EXTERNAL_STORAGE -> "legacyStorage"
                 else -> manifest
             }
         }

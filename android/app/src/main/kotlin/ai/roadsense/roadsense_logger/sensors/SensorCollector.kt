@@ -38,6 +38,9 @@ class SensorCollector(
     private var handler: Handler? = null
     private var running = false
 
+    @Volatile
+    private var overflowPending = false
+
     val accelerometerAvailable: Boolean get() = accelerometer != null
     val gyroscopeAvailable: Boolean get() = gyroscope != null
 
@@ -99,14 +102,18 @@ class SensorCollector(
                 z = event.values[2],
             ),
         )
-        if (!overflowed) {
-            onQueueOverflow(queue.droppedCount)
-        }
+        // Overflow is reported from flush() at batch cadence; reporting per
+        // dropped sample flooded the main thread and worsened the overflow.
+        if (!overflowed) overflowPending = true
     }
 
     override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) = Unit
 
     private fun flush() {
+        if (overflowPending) {
+            overflowPending = false
+            onQueueOverflow(queue.droppedCount)
+        }
         val drained = queue.drain()
         if (drained.isEmpty()) return
         val acc = ArrayList<List<Any>>()

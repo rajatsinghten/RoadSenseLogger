@@ -6,7 +6,10 @@ import android.app.NotificationManager
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.Manifest
+import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
+import android.util.Log
 import android.os.Build
 import android.os.IBinder
 import androidx.core.app.ServiceCompat
@@ -22,17 +25,8 @@ class RecordingForegroundService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        when (intent?.action) {
-            ACTION_STOP -> {
-                ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
-                stopSelf()
-                return START_NOT_STICKY
-            }
-            else -> {
-                val audio = intent?.getBooleanExtra(EXTRA_AUDIO, false) ?: false
-                startAsForeground(audio)
-            }
-        }
+        val audio = intent?.getBooleanExtra(EXTRA_AUDIO, false) ?: false
+        startAsForeground(audio)
         return START_NOT_STICKY
     }
 
@@ -54,23 +48,42 @@ class RecordingForegroundService : Service() {
             .setOngoing(true)
             .build()
 
+        // On Android 14+ declaring a type whose runtime permission is not
+        // granted throws SecurityException and kills the process, so only
+        // types backed by a granted permission are requested.
+        // Location exists from API 29; camera and microphone from API 30.
         var type = 0
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            type = ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA or
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION
-            if (audio) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q &&
+            (granted(Manifest.permission.ACCESS_FINE_LOCATION) ||
+                granted(Manifest.permission.ACCESS_COARSE_LOCATION))
+        ) {
+            type = type or ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            if (granted(Manifest.permission.CAMERA)) {
+                type = type or ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA
+            }
+            if (audio && granted(Manifest.permission.RECORD_AUDIO)) {
                 type = type or ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
             }
         }
-        ServiceCompat.startForeground(this, NOTIFICATION_ID, notification, type)
+        try {
+            ServiceCompat.startForeground(this, NOTIFICATION_ID, notification, type)
+        } catch (error: RuntimeException) {
+            Log.e(TAG, "startForeground failed; recording continues without FGS", error)
+            stopSelf()
+        }
     }
+
+    private fun granted(permission: String): Boolean =
+        ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED
 
     companion object {
         const val ACTION_START = "ai.roadsense.roadsense_logger.action.START_RECORDING"
-        const val ACTION_STOP = "ai.roadsense.roadsense_logger.action.STOP_RECORDING"
         const val EXTRA_AUDIO = "audio"
         private const val CHANNEL_ID = "roadsense_recording"
         private const val NOTIFICATION_ID = 1001
+        private const val TAG = "RoadSenseFgs"
 
         fun start(context: Context, audio: Boolean) {
             val intent = Intent(context, RecordingForegroundService::class.java)
@@ -80,9 +93,9 @@ class RecordingForegroundService : Service() {
         }
 
         fun stop(context: Context) {
-            val intent = Intent(context, RecordingForegroundService::class.java)
-                .setAction(ACTION_STOP)
-            context.startService(intent)
+            // stopService never throws for a backgrounded app, unlike
+            // startService (IllegalStateException on API 26+).
+            context.stopService(Intent(context, RecordingForegroundService::class.java))
         }
     }
 }
