@@ -9,8 +9,10 @@ library;
 
 import 'dart:io';
 
+import 'dart:async';
+
 import 'package:camera/camera.dart';
-import 'package:flutter/widgets.dart';
+import 'package:flutter/material.dart';
 import 'package:roadsense_logger/core/errors/app_failure.dart';
 import 'package:roadsense_logger/services/camera/video_recorder.dart';
 
@@ -64,6 +66,7 @@ class CameraVideoRecorder implements VideoRecorder {
         imageFormatGroup: ImageFormatGroup.yuv420,
       );
       await controller.initialize();
+      await _enableContinuousFocus(controller);
       _controller = controller;
     } on CameraFailure {
       rethrow;
@@ -78,7 +81,21 @@ class CameraVideoRecorder implements VideoRecorder {
     if (controller == null || !controller.value.isInitialized) {
       throw CameraFailure('Camera preview requested before initialization');
     }
-    return CameraPreview(controller);
+    return _FocusablePreview(controller: controller);
+  }
+
+  /// Continuous autofocus/auto-exposure keep the viewfinder sharp while
+  /// driving. Devices without focus control (fixed-focus lenses) report a
+  /// CameraException; the default lens behaviour is then the best available.
+  static Future<void> _enableContinuousFocus(
+    CameraController controller,
+  ) async {
+    try {
+      await controller.setFocusMode(FocusMode.auto);
+      await controller.setExposureMode(ExposureMode.auto);
+    } on CameraException {
+      return;
+    }
   }
 
   @override
@@ -135,5 +152,84 @@ class CameraVideoRecorder implements VideoRecorder {
       throw CameraFailure('Camera used before initialization');
     }
     return controller;
+  }
+}
+
+/// Full-frame preview with tap-to-focus. A tap meters focus and exposure on
+/// that point and briefly shows a focus square.
+class _FocusablePreview extends StatefulWidget {
+  const _FocusablePreview({required this.controller});
+
+  final CameraController controller;
+
+  @override
+  State<_FocusablePreview> createState() => _FocusablePreviewState();
+}
+
+class _FocusablePreviewState extends State<_FocusablePreview> {
+  Offset? _focusPoint;
+  Timer? _hideTimer;
+
+  @override
+  void dispose() {
+    _hideTimer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _focusAt(Offset local, Size size) async {
+    setState(() => _focusPoint = local);
+    _hideTimer?.cancel();
+    _hideTimer = Timer(const Duration(milliseconds: 1200), () {
+      if (mounted) setState(() => _focusPoint = null);
+    });
+    final point = Offset(
+      (local.dx / size.width).clamp(0.0, 1.0),
+      (local.dy / size.height).clamp(0.0, 1.0),
+    );
+    try {
+      await widget.controller.setFocusPoint(point);
+      await widget.controller.setExposurePoint(point);
+    } on CameraException {
+      // Point metering unsupported: continuous autofocus stays in effect.
+      return;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return CameraPreview(
+      widget.controller,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final size = constraints.biggest;
+          final point = _focusPoint;
+          return GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTapUp: (details) => _focusAt(details.localPosition, size),
+            child: Stack(
+              children: [
+                if (point != null)
+                  Positioned(
+                    left: point.dx - 32,
+                    top: point.dy - 32,
+                    child: IgnorePointer(
+                      child: Container(
+                        width: 64,
+                        height: 64,
+                        decoration: BoxDecoration(
+                          border: Border.all(
+                            color: const Color(0xFFFFD60A),
+                            width: 1.5,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
   }
 }
