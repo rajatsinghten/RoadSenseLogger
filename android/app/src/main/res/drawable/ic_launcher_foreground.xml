@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Simple camera: white body with a viewfinder hump, cut-out lens with an
+     inner element, and a red record dot. 108dp canvas, art inside the
+     66dp adaptive-icon safe zone. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Body + hump, with the lens ring punched out (evenOdd). -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:fillType="evenOdd"
+        android:pathData="M34,40 H44 L47,35 A3,3 0 0 1 49.6,33.5 H58.4 A3,3 0 0 1 61,35 L64,40 H74 A7,7 0 0 1 81,47 V69 A7,7 0 0 1 74,76 H34 A7,7 0 0 1 27,69 V47 A7,7 0 0 1 34,40 Z M54,45 A13,13 0 1 0 54,71 A13,13 0 1 0 54,45 Z" />
+    <!-- Inner lens element. -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M54,50.5 A7.5,7.5 0 1 0 54,65.5 A7.5,7.5 0 1 0 54,50.5 Z" />
+    <!-- Record indicator. -->
+    <path
+        android:fillColor="#FFFF3B30"
+        android:pathData="M35,47.5 A2.5,2.5 0 1 0 35,52.5 A2.5,2.5 0 1 0 35,47.5 Z" />
+</vector>
