@@ -67,17 +67,25 @@ cd android && ./gradlew test   # native Kotlin unit tests
 | High-rate sensors (manifest) | IMU above 200 Hz on Android 12+ | Not a runtime prompt |
 | Foreground service (camera/location/microphone types) | Reliable long recordings | At recording start |
 | Notifications | Foreground-service notification | With the service |
+| Storage (Android 8–9 only) | Save exports to `Download/RoadSense/` | When saving to Downloads |
 
-Denied camera permission blocks recording with a clear message. Missing GPS
-only warns: you can explicitly choose to record without GPS (never fabricating
-positions). No telemetry, no network upload; data leaves the device only if
-you share it.
+Camera (and microphone, when audio is enabled) is required to record; denial
+blocks recording with a clear message. Location and notifications are requested
+up front but are not fatal — recording can proceed without GPS after an
+explicit decision (never fabricating positions). On Android 8–9 saving an
+export asks for the legacy storage permission; Android 10+ uses MediaStore and
+needs none. No telemetry, no network upload; data leaves the device only if
+you share or export it.
 
 ## 5. Recording workflow
 
 1. Launch the app and grant permissions.
 2. Check the live camera preview, GPS status, sensor readouts and free storage.
-3. Press **Record**, confirm vehicle type, mount position and notes.
+   Tap the preview to focus and meter on a point; continuous autofocus keeps
+   the view sharp while driving.
+3. Press **Record**, confirm vehicle type, mount position and notes. GPS is
+   warmed up while the app sits idle, so a fix is usually available before you
+   start.
 4. If no GPS fix exists yet, confirm explicitly to record without GPS.
 5. Record — the screen shows elapsed time, speed, GPS age/accuracy, sensor
    magnitudes, achieved IMU rates, storage and warnings.
@@ -171,6 +179,11 @@ stale: `merged.csv` keeps `gps_age_s` but leaves the GPS columns empty. Speed
 and bearing may be missing on stationary devices — those fields are empty.
 Distance and average speed are derived only from consecutive accepted fixes.
 
+When Google Play Services is missing, the fused request fails, or no fix
+arrives within 15 s, the collector falls back to the platform
+`LocationManager` (device GPS) and reports the reason in the UI rather than
+staying silent.
+
 ## 11. Resampling and interpolation
 
 `merged.csv` is generated at finalization on a uniform grid `t_i = i / rate`
@@ -215,9 +228,10 @@ From a session's detail screen:
   `metadata.json`, `diagnostics.json`, streamed to the archive (no full-file
   copies in memory) and shared via a content URI.
 - **Export CSVs only (ZIP)** — the dataset without video.
-- **Open folder** — opens the session directory with a system file viewer
-  where the device supports it (app-private storage limits what other apps can
-  browse; sharing is the reliable path).
+- **Save full archive / Save CSVs to Downloads** — writes the ZIP to
+  `Download/RoadSense/` (visible in the Files app and over USB). Uses
+  MediaStore on Android 10+ with no storage permission; Android 8–9 asks for
+  the legacy storage permission. An existing name gets a ` (n)` suffix.
 - **Delete session** — with confirmation.
 
 ## 15. Tests and verification
