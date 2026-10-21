@@ -36,12 +36,16 @@ class RecoveryService {
   /// Upper bound of the unflushed write buffer at crash time (FR-055).
   final double lossWindowS;
 
-  /// Recovers every incomplete session; complete sessions are untouched.
+  /// Recovers every incomplete session that has no metadata; complete
+  /// sessions are untouched. A session finalized with `incomplete` status
+  /// (validation failed) keeps its real metadata instead of being replaced
+  /// by a reconstructed one.
   Future<RecoveryReport> recoverAll() async {
     final recovered = <String>[];
     final skipped = <String>[];
     for (final record in repository.listSessions()) {
-      if (record.status != SessionStatus.incomplete) {
+      if (record.status != SessionStatus.incomplete ||
+          record.metadata != null) {
         skipped.add(record.id);
         continue;
       }
@@ -63,6 +67,7 @@ class RecoveryService {
       partFile: paths.imuPartFile,
       finalFile: paths.imuFile,
       expectedColumns: 7,
+      streamColumn: 3,
       problems: problems,
     );
     final gpsRows = await _recoverCsv(
@@ -193,6 +198,7 @@ class RecoveryService {
     required String finalFile,
     required int expectedColumns,
     required List<String> problems,
+    int? streamColumn,
   }) async {
     final part = File(partFile);
     final finalF = File(finalFile);
@@ -210,12 +216,18 @@ class RecoveryService {
       return 0;
     }
     final kept = <String>[lines.first];
-    int? lastTimestamp;
+    // Monotonicity is checked per stream (ACC/GYRO interleave in arrival
+    // order, so a cross-sensor check would truncate valid data).
+    final lastTimestamps = <String, int>{};
     var truncated = 0;
     for (final line in lines.skip(1)) {
       if (line.trim().isEmpty) continue;
       final fields = line.split(',');
       final timestamp = int.tryParse(fields.isNotEmpty ? fields.first : '');
+      final stream = streamColumn != null && fields.length > streamColumn
+          ? fields[streamColumn]
+          : '';
+      final lastTimestamp = lastTimestamps[stream];
       final valid =
           fields.length == expectedColumns &&
           timestamp != null &&
@@ -225,7 +237,7 @@ class RecoveryService {
         break; // corrupt tail: stop at the first bad row
       }
       kept.add(line);
-      lastTimestamp = timestamp;
+      lastTimestamps[stream] = timestamp;
     }
     if (truncated > 0) {
       problems.add(

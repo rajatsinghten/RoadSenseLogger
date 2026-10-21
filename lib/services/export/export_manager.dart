@@ -1,4 +1,5 @@
-/// Session export (FR-070, FR-071): ZIP archives shared via content URIs.
+/// Session export (FR-070, FR-071): ZIP archives shared via content URIs or
+/// saved to the public `Download/RoadSense/` folder.
 ///
 /// Archives are built with streaming file encoding so large videos are never
 /// loaded into memory. Required dataset files must exist; optional files are
@@ -22,7 +23,9 @@ abstract interface class SessionExporter {
 
   Future<void> shareArchive(File archive, {String? subject});
 
-  Future<void> openSessionFolder(SessionRecord record);
+  /// Saves [archive] to `Download/RoadSense/` and removes the temporary
+  /// copy. Returns the saved location shown to the user.
+  Future<String> saveToDownloads(File archive);
 }
 
 class ExportManager implements SessionExporter {
@@ -100,16 +103,28 @@ class ExportManager implements SessionExporter {
     }
   }
 
-  /// Opens the session directory with a system file viewer where supported.
   @override
-  Future<void> openSessionFolder(SessionRecord record) async {
+  Future<String> saveToDownloads(File archive) async {
+    final granted = await native.requestPermissions(['legacyStorage']);
+    if (granted['legacyStorage'] != true) {
+      throw ExportFailure(
+        'Storage permission is required to save to Downloads',
+      );
+    }
     try {
-      await native.openFolder(record.directory.path);
+      return await native.saveToDownloads(
+        archive.path,
+        displayName: archive.uri.pathSegments.last,
+      );
     } catch (error) {
       throw ExportFailure(
-        'Could not open ${record.id} in a file viewer',
+        'Could not save ${archive.uri.pathSegments.last} to Downloads',
         cause: error,
       );
+    } finally {
+      // The archive duplicates the session (including video); never keep
+      // the temporary copy once it has been saved or the save has failed.
+      if (archive.existsSync()) await archive.delete();
     }
   }
 }

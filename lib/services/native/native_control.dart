@@ -32,8 +32,10 @@ abstract interface class NativeControl {
   /// Free bytes available to the app on the data volume (FR-054).
   Future<int> getFreeStorageBytes();
 
-  /// Opens a directory with a system file viewer where supported (FR-070).
-  Future<void> openFolder(String path);
+  /// Copies the file at [path] into the public `Download/RoadSense/` folder
+  /// as [displayName] (FR-070). Returns the user-visible saved location,
+  /// which may carry a " (n)" suffix when the name already exists.
+  Future<String> saveToDownloads(String path, {required String displayName});
 
   Future<Map<String, bool>> checkPermissions(List<String> permissions);
 

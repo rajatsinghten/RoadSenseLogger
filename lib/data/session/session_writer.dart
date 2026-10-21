@@ -48,6 +48,7 @@ class SessionWriter {
   final List<String> _imuRows = <String>[];
   final List<String> _gpsRows = <String>[];
   List<ImuEvent> _pendingPreRoll = <ImuEvent>[];
+  List<GpsFix> _pendingGps = <GpsFix>[];
   int _lastFlushNs = 0;
 
   int _imuRowCount = 0;
@@ -56,7 +57,8 @@ class SessionWriter {
   int? _videoStartNs;
   bool _closed = false;
 
-  /// Rows accepted per file (including any dropped from the pre-roll buffer).
+  /// Rows written (or queued for writing) per file; pre-roll rows dropped
+  /// by the bounded buffer are excluded and reported separately.
   int get imuRowCount => _imuRowCount;
   int get gpsRowCount => _gpsRowCount;
 
@@ -86,6 +88,10 @@ class SessionWriter {
       _imuRows.insertAll(0, _pendingPreRoll.map(_imuRow));
       _pendingPreRoll = <ImuEvent>[];
     }
+    if (_pendingGps.isNotEmpty) {
+      _gpsRows.insertAll(0, _pendingGps.map(_gpsRow));
+      _pendingGps = <GpsFix>[];
+    }
   }
 
   void addImuEvents(List<ImuEvent> events) {
@@ -94,6 +100,7 @@ class SessionWriter {
         if (_pendingPreRoll.length >= maxPendingPreRollRows) {
           _pendingPreRoll.removeAt(0);
           _droppedPreRollRows++;
+          _imuRowCount--;
         }
         _pendingPreRoll.add(event);
       } else {
@@ -104,8 +111,19 @@ class SessionWriter {
     _maybeFlush();
   }
 
+  /// Fixes before `video_start_ns` are held so they get a (negative)
+  /// `t_video_s` like IMU pre-roll instead of an empty one.
   void addGpsFix(GpsFix fix) {
-    _gpsRows.add(_gpsRow(fix));
+    if (_videoStartNs == null) {
+      if (_pendingGps.length >= maxPendingPreRollRows) {
+        _pendingGps.removeAt(0);
+        _droppedPreRollRows++;
+        _gpsRowCount--;
+      }
+      _pendingGps.add(fix);
+    } else {
+      _gpsRows.add(_gpsRow(fix));
+    }
     _gpsRowCount++;
     _maybeFlush();
   }

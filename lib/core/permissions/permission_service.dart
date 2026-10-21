@@ -17,25 +17,30 @@ class PermissionService implements PermissionsGate {
 
   final NativeControl _native;
 
-  /// Camera is always required; audio only when audio recording is enabled;
-  /// location enables GPS (not fatal on its own — recording can proceed
-  /// without GPS after an explicit user decision, FR-033).
+  /// Camera is always required; audio only when audio recording is enabled.
+  /// Location enables GPS and notifications show the recording indicator;
+  /// neither is fatal — recording can proceed without GPS after an explicit
+  /// user decision (FR-033).
   List<String> requiredPermissions({required bool audio}) => [
     'camera',
     'fineLocation',
     'coarseLocation',
+    'notifications',
     if (audio) 'recordAudio',
   ];
 
+  /// Returns true when the permissions recording cannot work without are
+  /// granted: camera, plus microphone when audio is enabled.
   @override
   Future<bool> ensurePermissions({required bool audio}) async {
     final names = requiredPermissions(audio: audio);
-    final status = await _native.checkPermissions(names);
-    if (status['camera'] == true) {
-      return true;
+    var status = await _native.checkPermissions(names);
+    if (names.any((name) => status[name] != true)) {
+      await _native.requestPermissions(names);
+      status = await _native.checkPermissions(names);
     }
-    final requested = await _native.requestPermissions(names);
-    return requested['camera'] == true;
+    return status['camera'] == true &&
+        (!audio || status['recordAudio'] == true);
   }
 
   /// Throws when the camera permission is missing at recording start.

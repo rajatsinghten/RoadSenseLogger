@@ -134,6 +134,50 @@ class RecordingSessionManager implements RecordingController {
     _preparedConfig = config;
   }
 
+  GpsRecorder? _previewGps;
+  bool _previewGpsRunning = false;
+  Timer? _previewTicker;
+
+  /// Starts GPS while idle so the first fix (often 30 s+ from a cold start)
+  /// arrives before recording begins, and the UI can show live GPS state.
+  /// Preview fixes are discarded, never persisted. A failed start is kept
+  /// so its reason stays visible; calling again retries.
+  @override
+  Future<void> prepareGps() async {
+    if (_gpsRecorder != null || _previewGpsRunning) return;
+    await _stopPreviewGps();
+    final anchorNs = await native.getElapsedNs();
+    final stopwatch = Stopwatch()..start();
+    final recorder = GpsRecorder(
+      source: location,
+      onFix: (_) => _emitSnapshot(),
+      onDiagnostic: (_) => _emitSnapshot(),
+      nowNs: () => anchorNs + stopwatch.elapsedMicroseconds * 1000,
+    );
+    _previewGps = recorder;
+    // Set before awaiting so a concurrent start() stops this recorder.
+    _previewGpsRunning = true;
+    try {
+      await recorder.start(intervalMs: 1000);
+      if (!identical(_previewGps, recorder)) return;
+      _previewTicker = Timer.periodic(tickInterval, (_) => _emitSnapshot());
+    } catch (_) {
+      // Reason is retained in the recorder report and shown in the UI.
+      _previewGpsRunning = false;
+    }
+    _emitSnapshot();
+  }
+
+  Future<void> _stopPreviewGps() async {
+    _previewTicker?.cancel();
+    _previewTicker = null;
+    final preview = _previewGps;
+    final running = _previewGpsRunning;
+    _previewGps = null;
+    _previewGpsRunning = false;
+    if (running) await preview?.stop();
+  }
+
   Stream<RecordingState> get stateChanges => _stateController.stream;
 
   @override
@@ -226,6 +270,7 @@ class RecordingSessionManager implements RecordingController {
         );
       }
 
+      await _stopPreviewGps();
       final gpsRecorder = GpsRecorder(
         source: location,
         onFix: _onGpsFix,
@@ -265,6 +310,7 @@ class RecordingSessionManager implements RecordingController {
           message: 'Recording failed to start: $error',
         ),
       );
+      await _writeDiagnosticsBestEffort();
       _transition(RecordingState.error, reason: error.toString());
       _emitSnapshot();
       Error.throwWithStackTrace(
@@ -280,6 +326,8 @@ class RecordingSessionManager implements RecordingController {
   /// (RECORDING → FINALIZING → COMPLETED).
   @override
   Future<void> stop() async {
+    // A tick-triggered interruption may already be finalizing the session.
+    if (_interrupted && _machine.state != RecordingState.recording) return;
     _transition(RecordingState.finalizing, reason: 'user stop');
     await _finalize();
   }
@@ -288,6 +336,8 @@ class RecordingSessionManager implements RecordingController {
   /// finalizes best-effort (RECORDING → INTERRUPTED → FINALIZING).
   @override
   Future<void> interrupt(String reason) async {
+    // Only a live recording can be interrupted; later calls are no-ops.
+    if (_machine.state != RecordingState.recording) return;
     _transition(RecordingState.interrupted, reason: reason);
     _interrupted = true;
     _interruptionReason = reason;
@@ -306,10 +356,8 @@ class RecordingSessionManager implements RecordingController {
     _ticker?.cancel();
     _ticker = null;
     try {
-      await _sensorRecorder?.stop();
-      await _gpsRecorder?.stop();
-      _writer?.flush();
-
+      // Video stops first so IMU/GPS keep covering the whole video interval;
+      // stopping sensors first left the merged tail rows empty.
       try {
         final endInfo = await video.stopRecording(_paths!.videoFile);
         _videoEndNs = endInfo.videoEndNs;
@@ -325,13 +373,16 @@ class RecordingSessionManager implements RecordingController {
           ),
         );
       }
+      await _stopSubsystem('sensor', () async => _sensorRecorder?.stop());
+      await _stopSubsystem('gps', () async => _gpsRecorder?.stop());
+      _writer?.flush();
       await video.dispose();
       await _writer?.finalizeNames();
       await native.stopForeground();
 
       final config = _config!;
       final startNs = _videoStartNs;
-      final endNs = _videoEndNs;
+      final endNs = _videoEndNs ?? _fallbackVideoEndNs(startNs);
       if (startNs == null || endNs == null) {
         throw ValidationFailure('Video interval is unknown; cannot merge');
       }
@@ -454,6 +505,7 @@ class RecordingSessionManager implements RecordingController {
           message: 'Finalization failed: $error',
         ),
       );
+      await _writeDiagnosticsBestEffort();
       if (_machine.canTransition(RecordingState.error)) {
         _transition(RecordingState.error, reason: error.toString());
       }
@@ -466,6 +518,52 @@ class RecordingSessionManager implements RecordingController {
       );
     }
     _emitSnapshot();
+  }
+
+  /// Stops one subsystem; a failure is recorded instead of aborting
+  /// finalization (which would otherwise skip writing the session).
+  Future<void> _stopSubsystem(String name, Future<void> Function() stop) async {
+    try {
+      await stop();
+    } catch (error) {
+      _diagnostics.record(
+        DiagnosticEvent(
+          timestampNs: _nowNs(),
+          type: '${name}_stop_failure',
+          message: 'Stopping $name collection failed: $error',
+        ),
+      );
+    }
+  }
+
+  /// When the camera never reported a recording end, the last IMU sample
+  /// bounds the data actually captured. The session is already marked
+  /// interrupted by the caller, so this is never presented as video timing.
+  int? _fallbackVideoEndNs(int? startNs) {
+    if (startNs == null || _imuEvents.isEmpty) return null;
+    final lastNs = _imuEvents.map((e) => e.timestampNs).reduce(max);
+    if (lastNs <= startNs) return null;
+    _diagnostics.record(
+      DiagnosticEvent(
+        timestampNs: _nowNs(),
+        type: 'video_end_estimated',
+        message: 'Video end unknown; merged grid ends at last IMU sample',
+        context: {'video_end_ns': lastNs},
+      ),
+    );
+    return lastNs;
+  }
+
+  /// Persists diagnostics on failure paths (AGENTS.md: failures must reach
+  /// diagnostics.json). A write failure here cannot be reported further.
+  Future<void> _writeDiagnosticsBestEffort() async {
+    final paths = _paths;
+    if (paths == null) return;
+    try {
+      await writeJsonFile(paths.diagnosticsFile, _diagnostics.toJson());
+    } on FileSystemException {
+      return;
+    }
   }
 
   Future<void> _writeMerged(List<MergedRow> rows) async {
@@ -510,6 +608,9 @@ class RecordingSessionManager implements RecordingController {
       await _gpsRecorder?.stop();
     } catch (_) {}
     try {
+      await _stopPreviewGps();
+    } catch (_) {}
+    try {
       await video.dispose();
     } catch (_) {}
     try {
@@ -548,6 +649,7 @@ class RecordingSessionManager implements RecordingController {
         );
     final gpsReport =
         _gpsRecorder?.report() ??
+        _previewGps?.report() ??
         const GpsReport(
           acceptedCount: 0,
           rejectedCount: 0,
@@ -561,7 +663,10 @@ class RecordingSessionManager implements RecordingController {
     final warnings = <String>[
       if (!sensorReport.gyroscopeAvailable)
         'Gyroscope unavailable: gyro columns will be empty',
-      if (gpsReport.acceptedCount == 0) 'No GPS fix received yet',
+      if (gpsReport.acceptedCount == 0)
+        gpsReport.statusMessage == null
+            ? 'No GPS fix received yet'
+            : 'No GPS fix: ${gpsReport.statusMessage}',
       if (gpsReport.acceptedCount > 0 && gpsReport.isStale(5))
         'GPS data is stale',
       if (_freeStorageBytes < minFreeStorageBytes * 2) 'Storage is low',
@@ -597,6 +702,7 @@ class RecordingSessionManager implements RecordingController {
   /// Disposes streams and timers (manager is unusable afterwards).
   Future<void> dispose() async {
     _ticker?.cancel();
+    await _stopPreviewGps();
     await _stateController.close();
     await _snapshotController.close();
   }

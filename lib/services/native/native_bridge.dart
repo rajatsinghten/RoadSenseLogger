@@ -34,15 +34,30 @@ class NativeSensorBatch {
   final bool isOverflowMarker;
 }
 
-/// One decoded native GPS event: an accepted fix or a rejection record.
+/// One decoded native GPS event: an accepted fix, a rejection record, or a
+/// collector status change (source switch, permission/provider problem).
 class NativeGpsEvent {
-  const NativeGpsEvent.accepted(this.fix) : accepted = true, reason = null;
+  const NativeGpsEvent.accepted(this.fix)
+    : accepted = true,
+      reason = null,
+      statusMessage = null;
 
-  const NativeGpsEvent.rejected(this.reason) : fix = null, accepted = false;
+  const NativeGpsEvent.rejected(this.reason)
+    : fix = null,
+      accepted = false,
+      statusMessage = null;
+
+  /// [reason] carries the status code, [statusMessage] the user-facing text.
+  const NativeGpsEvent.status(this.reason, String this.statusMessage)
+    : fix = null,
+      accepted = false;
 
   final GpsFix? fix;
   final bool accepted;
   final String? reason;
+  final String? statusMessage;
+
+  bool get isStatus => statusMessage != null;
 }
 
 class NativeBridge implements SensorSource, LocationSource, NativeControl {
@@ -101,6 +116,12 @@ class NativeBridge implements SensorSource, LocationSource, NativeControl {
 
   static NativeGpsEvent decodeGpsEvent(Object? raw) {
     final map = (raw as Map).cast<String, Object?>();
+    if (map['kind'] == 'status') {
+      return NativeGpsEvent.status(
+        (map['status'] as String?) ?? 'unspecified',
+        (map['message'] as String?) ?? '',
+      );
+    }
     if (map['accepted'] != true) {
       return NativeGpsEvent.rejected(
         (map['reason'] as String?) ?? 'unspecified',
@@ -197,8 +218,13 @@ class NativeBridge implements SensorSource, LocationSource, NativeControl {
       (await _method.invokeMethod<int>('getFreeStorageBytes'))!;
 
   @override
-  Future<void> openFolder(String path) =>
-      _method.invokeMethod<void>('openFolder', {'path': path});
+  Future<String> saveToDownloads(
+    String path, {
+    required String displayName,
+  }) async => (await _method.invokeMethod<String>('saveToDownloads', {
+    'path': path,
+    'displayName': displayName,
+  }))!;
 
   @override
   Future<void> startForeground({required bool audio}) =>

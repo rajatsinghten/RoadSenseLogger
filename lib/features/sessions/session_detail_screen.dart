@@ -2,6 +2,8 @@
 /// unavailable (—), never zero.
 library;
 
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:roadsense_logger/core/errors/app_failure.dart';
 import 'package:roadsense_logger/data/session/session_repository.dart';
@@ -55,10 +57,21 @@ class SessionDetailScreen extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           OutlinedButton.icon(
-            icon: const Icon(Icons.folder_open),
-            label: const Text('Open folder'),
-            onPressed: () =>
-                _run(context, () => exporter.openSessionFolder(record)),
+            icon: const Icon(Icons.download),
+            label: const Text('Save full archive to Downloads'),
+            onPressed: () => _saveToDownloads(
+              context,
+              () => exporter.createFullArchive(record),
+            ),
+          ),
+          const SizedBox(height: 8),
+          OutlinedButton.icon(
+            icon: const Icon(Icons.download),
+            label: const Text('Save CSVs to Downloads'),
+            onPressed: () => _saveToDownloads(
+              context,
+              () => exporter.createCsvArchive(record),
+            ),
           ),
           const SizedBox(height: 8),
           OutlinedButton.icon(
@@ -85,6 +98,17 @@ class SessionDetailScreen extends StatelessWidget {
       }
     }
   }
+
+  Future<void> _saveToDownloads(
+    BuildContext context,
+    Future<File> Function() buildArchive,
+  ) => _run(context, () async {
+    final location = await exporter.saveToDownloads(await buildArchive());
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text('Saved to $location')));
+  });
 
   Future<void> _confirmDelete(BuildContext context) async {
     final confirmed = await showDialog<bool>(

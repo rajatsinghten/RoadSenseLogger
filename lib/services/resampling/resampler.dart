@@ -128,6 +128,10 @@ class Resampler {
       imuEvents.where((e) => e.sensor == ImuSensorKind.gyro).toList(),
     );
     final gps = _stableByTimestampGps(gpsFixes.toList());
+    // Built once: per-row rebuilding made resampling O(rows x events).
+    final accTs = [for (final e in acc) e.timestampNs];
+    final gyroTs = [for (final e in gyro) e.timestampNs];
+    final gpsTs = [for (final f in gps) f.timestampNs];
 
     final maxGapNs = (maxImuGapMs * 1e6).round();
     final maxGpsAgeNs = (maxGpsAgeS * 1e9).round();
@@ -147,9 +151,9 @@ class Resampler {
       final tVideoS = i / rateHz;
       final gridNs = videoStartNs + (tVideoS * 1e9).round();
 
-      final accPoint = _interpolate(acc, gridNs, maxGapNs);
-      final gyroPoint = _interpolate(gyro, gridNs, maxGapNs);
-      final gpsPoint = _forwardFill(gps, gridNs, maxGpsAgeNs);
+      final accPoint = _interpolate(acc, accTs, gridNs, maxGapNs);
+      final gyroPoint = _interpolate(gyro, gyroTs, gridNs, maxGapNs);
+      final gpsPoint = _forwardFill(gps, gpsTs, gridNs, maxGpsAgeNs);
 
       if (accPoint == null) accMissing++;
       if (gyroPoint == null) gyroMissing++;
@@ -194,11 +198,11 @@ class Resampler {
 
   ({double x, double y, double z})? _interpolate(
     List<ImuEvent> sorted,
+    List<int> ts,
     int gridNs,
     int maxGapNs,
   ) {
     if (sorted.isEmpty) return null;
-    final ts = [for (final e in sorted) e.timestampNs];
     final exactIdx = _upperBound(ts, gridNs) - 1;
     if (exactIdx >= 0 && ts[exactIdx] == gridNs) {
       final e = sorted[exactIdx];
@@ -229,9 +233,8 @@ class Resampler {
     double ageS,
     bool stale,
   })?
-  _forwardFill(List<GpsFix> sorted, int gridNs, int maxGpsAgeNs) {
+  _forwardFill(List<GpsFix> sorted, List<int> ts, int gridNs, int maxGpsAgeNs) {
     if (sorted.isEmpty) return null;
-    final ts = [for (final f in sorted) f.timestampNs];
     final idx = _upperBound(ts, gridNs) - 1;
     if (idx < 0) return null;
     final fix = sorted[idx];

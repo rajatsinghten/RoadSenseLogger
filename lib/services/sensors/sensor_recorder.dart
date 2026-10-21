@@ -82,11 +82,8 @@ class SensorRecorder {
     required int accPeriodUs,
     required int gyroPeriodUs,
   }) async {
-    final availability = await _source.startSensors(
-      accPeriodUs: accPeriodUs,
-      gyroPeriodUs: gyroPeriodUs,
-    );
-    _gyroscopeAvailable = availability.gyroscopeAvailable;
+    // Subscribe first: the native sink is null until Dart listens, so
+    // batches flushed before the listen were silently dropped.
     _subscription = _source.sensorBatches.listen(
       _onBatch,
       onError: (Object error) {
@@ -99,12 +96,26 @@ class SensorRecorder {
         );
       },
     );
+    try {
+      final availability = await _source.startSensors(
+        accPeriodUs: accPeriodUs,
+        gyroPeriodUs: gyroPeriodUs,
+      );
+      _gyroscopeAvailable = availability.gyroscopeAvailable;
+    } catch (_) {
+      await _subscription?.cancel();
+      _subscription = null;
+      rethrow;
+    }
   }
 
+  /// Stops native collection before cancelling, so the final native flush
+  /// (up to one batch interval) still reaches Dart.
   Future<void> stop() async {
+    await _source.stopSensors();
+    await Future<void>.delayed(Duration.zero);
     await _subscription?.cancel();
     _subscription = null;
-    await _source.stopSensors();
   }
 
   void _onBatch(NativeSensorBatch batch) {

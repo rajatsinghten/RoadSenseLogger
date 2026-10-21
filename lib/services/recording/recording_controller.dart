@@ -21,6 +21,10 @@ abstract interface class RecordingController {
   /// Initializes the camera for the live preview (FR-013).
   Future<void> prepareCamera(VideoConfig config);
 
+  /// Starts GPS ahead of recording so a fix can be acquired while the user
+  /// configures the session. Fixes received here are not persisted.
+  Future<void> prepareGps();
+
   Widget buildPreview();
 
   Future<void> start(SessionConfig config);

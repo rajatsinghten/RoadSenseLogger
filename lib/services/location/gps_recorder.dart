@@ -4,6 +4,8 @@ library;
 
 import 'dart:async';
 
+import 'package:flutter/services.dart';
+
 import 'package:roadsense_logger/domain/models/diagnostic_event.dart';
 import 'package:roadsense_logger/domain/models/gps_fix.dart';
 import 'package:roadsense_logger/services/native/native_bridge.dart';
@@ -17,6 +19,7 @@ class GpsReport {
     required this.lastFix,
     required this.lastFixAgeS,
     required this.outageCount,
+    this.statusMessage,
   });
 
   final int acceptedCount;
@@ -29,6 +32,9 @@ class GpsReport {
   final double? lastFixAgeS;
 
   final int outageCount;
+
+  /// Latest collector status (e.g. why no fix is available), or null.
+  final String? statusMessage;
 
   /// Last reported speed (m/s), or null when unavailable (never fabricated).
   double? get lastSpeedMps => lastFix?.speedMps;
@@ -68,10 +74,20 @@ class GpsRecorder {
   GpsFix? _lastFix;
   int? _lastFixNs;
   bool _staleReported = false;
+  String? _statusMessage;
 
   Future<void> start({required int intervalMs}) async {
-    await _source.startGps(intervalMs: intervalMs);
     _subscription = _source.gpsEvents.listen(_onEvent);
+    try {
+      await _source.startGps(intervalMs: intervalMs);
+    } catch (error) {
+      _statusMessage = error is PlatformException
+          ? (error.message ?? error.code)
+          : '$error';
+      await _subscription?.cancel();
+      _subscription = null;
+      rethrow;
+    }
   }
 
   Future<void> stop() async {
@@ -81,6 +97,18 @@ class GpsRecorder {
   }
 
   void _onEvent(NativeGpsEvent event) {
+    if (event.isStatus) {
+      _statusMessage = event.statusMessage;
+      _onDiagnostic(
+        DiagnosticEvent(
+          timestampNs: _nowNs(),
+          type: 'gps_status',
+          message: event.statusMessage!,
+          context: {'status': event.reason},
+        ),
+      );
+      return;
+    }
     if (!event.accepted || event.fix == null) {
       _rejectedCount++;
       _onDiagnostic(
@@ -144,6 +172,7 @@ class GpsRecorder {
       lastFix: _lastFix,
       lastFixAgeS: ageS,
       outageCount: _outageCount,
+      statusMessage: _statusMessage,
     );
   }
 }
